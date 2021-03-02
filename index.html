@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+  <head>
+      <meta charset="utf-8">
+      <meta http-equiv="X-UA-Compatible" content="IE=edge">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>AM I REKT?</title>
+      <style>
+        body {background:#111; font-family: monospace;}
+        a, body {color:#0FF;}
+        textarea, input, #check, .result {font-family: monospace; margin-top:15px;background:#111; width:600px;padding:5px; border:1px solid #0FF; color:#0FF; border-radius:2px;}
+        textarea {height:200px;}
+        ::placeholder {color:#088;}
+
+        #wrap { width:600px; margin:50px auto;}
+        #check {width:612px;background:#055;}
+        #check:hover {background:#0FF;color:black;cursor:pointer;}
+
+        #feedback {margin-top:50px;}
+        #foot {width:600px; position:fixed; bottom:0; padding:10px; background:#111;}
+        #foot #right {float:right; }
+
+        .fubar {color:#F00;border:1px solid #F00;}
+        .gravy {color:#0F0;border:1px solid #0F0;}
+        .warn {color:#eb8034;border:1px solid #eb8034;}
+        .sub {margin-left:20px; width:580px;}
+
+        #wtf {text-align:center;display:inherit; color:#0FF; text-decoration:none;}
+        .modal { display:none; position:fixed; z-index:1; padding-top:100px; left:0; top:0; width:100%; height:100%; overflow:auto; background-color:#111; background-color:rgba(0,0,0,0.8);}
+        .mcontent {background-color:#055; margin:auto; padding:20px; border:1px solid #0FF; width:40%;}
+      </style>
+  </head>
+  <body>
+    <div id='wrap'>
+      <h2>Bulk Address Approval Check</h2>
+      <p>Enter a list of addresses and a contract to check and this tool will lookup tx history for each address and search for any approvals set for the specified contract address</p>
+      <div id='entry'>
+        <textarea id='addresses' placeholder="0x0123xxx4567, 0x89ABxxxCDE, 0x0101xxxABAB..."></textarea>
+        <input type='text' id='targetContract' placeholder="'approved spender' contract address">
+        <input type='text' id='etherscanKey' placeholder="etherscan api key">
+        <button type='button' id='check' onClick='startSweating()' >CHECK</button>
+      </div>
+      <div id="feedback">
+        <div id="ohgodplease"></div>
+      </div>
+      <div id="foot">
+        <div id='right'><a href="#wtf" id="wtf">what is this?</a></div>
+        <div id='left'>0xthrpw</div>
+      </div>
+    </div>
+    <div id="wtfModal" class="modal">
+      <div class="mcontent">
+        <h2>0x095ea7b3</h2>
+        <p>There are some great existing tools out there for revoking allowances for a given ethereum address, and for these I am grateful.<br><br>  Many of us operate multiple ethereum accounts and when a contract gets exploited and SHTF it can be difficult to figure out which accounts could be at risk.  The intent of this tool is to allow you to quickly lookup whether any of the accounts under your control could be potentially vulnerable to a compromised contract</p>
+          <p>I built this tool using an etherscan api endpoint, and therefore it is subject to rate limiting.  It is for this reason that I included the field to provide your own etherscan key so that you can use with out getting throttled due to traffic.  This is a a very simple one page app and no data is being collected whatsoever, you can verify for yourself by viewing the source code for this page.  If you don't have an etherscan api key, you can easily acquire one by creating an etherscan account.  But if you're really lazy and don't care about potentially getting rate-limited you can use mine: YDWWB5X3HQ9HPQQU24UWX4P4V4K8IESQW8 </p>
+          <p>Source can also be viewed here <a href='https://github.com/0xthrpw/rektcheck' target='_blank'>github.com/0xthrpw/rektcheck</a>
+      </div>
+    </div>
+    <script type='text/javascript'>
+        var addressString;
+        var targetContract;
+        var etherscanKey;
+
+        async function fetchTxs(address) {
+          etherscanKey = document.getElementById("etherscanKey").value
+          if(etherscanKey == ''){
+            ohgodplease.innerHTML = "<div class='result fubar'>Error: Missing etherscan key </div>";
+            return false;
+          }
+          var target = "https://api.etherscan.io/api?module=account&action=txlist&address="+address+"&startblock=0&endblock=99999999&sort=asc&apikey="+etherscanKey;
+          const response = await fetch(target);
+          const txs = await response.json();
+          return txs;
+        }
+
+        function startSweating(){
+          addressString = document.getElementById("addresses").value;
+          targetContract = document.getElementById("targetContract").value
+          var ohgodplease = document.getElementById('ohgodplease');
+          if(addressString == '' || targetContract == ''){
+            ohgodplease.innerHTML = "<div class='result fubar'>Error: Missing addresses or target contract </div>";
+            return;
+          }
+          ohgodplease.innerHTML = "Nervously wiping sweat from brow...";
+
+          (async () => {
+              var addresses = addressString.split(",");
+              ohgodplease.innerHTML = "";
+              for (let i = 0; i < addresses.length; i++) {
+                address = addresses[i].trim();
+
+                badTxs = [];
+                affectedTokens = [];
+                status = "PASS";
+                await fetchTxs(address).then(txs => {
+                  for (let j = 0; j < txs.result.length; j++) {
+                    tx = txs.result[j];
+                    sig = tx.input.substring(0,10);
+                    if(sig == "0x095ea7b3"){
+                      approvedSpender = "0x"+tx.input.substring(34,74);
+                      if(approvedSpender == targetContract){
+                        badTxs.push(tx.hash);
+                        affectedTokens.push(tx.to);
+                        status = "FAIL";
+                      }
+                    }
+                  }
+
+                  if(status == "FAIL"){
+                    finding = "<div class='result fubar' >Your address: "+address+" has set "+targetContract+" as an approved spender for "+affectedTokens.length+" contracts:</div>";
+                      for(let k = 0; k < affectedTokens.length; k++){
+                        finding += "<div class='sub result fubar' >";
+                        finding += "<a style='color:#F00' href='http://etherscan.io/tx/"+badTxs[k]+"'>"+affectedTokens[k]+"</a> !<br>";
+                        finding += "</div>";
+                      }
+
+                  } else if (status == "PASS" && txs.result.length == 0){
+                    finding = "<div class='result warn' >"+address+"<span style='float:right'>"+txs.result.length+" TXS : ERROR</span></div>";
+                  } else {
+                    finding = "<div class='result gravy' >"+address+"<span style='float:right'>"+txs.result.length+" TXS : OK</span></div>";
+                  }
+                  ohgodplease.innerHTML = finding+"<br>" +ohgodplease.innerHTML;
+                });
+                await new Promise(resolve => setTimeout(resolve, 500));
+              }
+          })();
+        }
+
+        var wtfmodal = document.getElementById("wtfModal");
+        var wtfbtn = document.getElementById("wtf");
+        wtfbtn.onclick = function() {
+          wtfmodal.style.display = "block";
+        }
+        window.onclick = function(event) {
+          if (event.target == wtfmodal) {
+            wtfmodal.style.display = "none";
+          }
+        }
+    </script>
+  </body>
+</html>
